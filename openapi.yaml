@@ -1,0 +1,1281 @@
+openapi: 3.1.0
+info:
+  title: Messdaten Karte API
+  version: 0.1.0-draft
+  description: |
+    Entwurf der REST-/WebSocket-API für Messdaten Karte (siehe projekt.md).
+
+    **Authentifizierung**
+    - Session-Cookie (`session`) nach Login; zustandsändernde Requests brauchen den Header `X-CSRF-Token`.
+    - API-Token per `Authorization: Bearer <token>` (Scopes `measurements:write` oder `full`).
+    - Anonyme Zugriffe sind nur auf öffentliche Projekte möglich.
+
+    **Konventionen**
+    - Alle Pfade unter `/api`. Zeiten sind ISO 8601 in UTC. Koordinaten WGS84 (lat/lon), Radius in Metern.
+    - Fehler folgen `Error` mit maschinenlesbarem `code` (Frontend übersetzt, DE/EN).
+    - Projekte werden über `{project}` adressiert: UUID oder Slug.
+servers:
+  - url: /api
+tags:
+  - name: Auth
+  - name: Projects
+  - name: Members
+  - name: Metrics
+  - name: Measurements
+  - name: Heatmap
+  - name: Export
+  - name: Tokens
+  - name: Admin
+  - name: Live
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+  - {}
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Benutzer registrieren (nur wenn Registrierung aktiviert)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Credentials' }
+      responses:
+        '201':
+          description: Benutzer angelegt und angemeldet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/RegistrationDisabled' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Anmelden, setzt Session-Cookie
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Credentials'
+                - type: object
+                  properties:
+                    remember_me: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Angemeldet
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, csrf_token]
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  csrf_token: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Abmelden
+      security: [{ cookieAuth: [] }]
+      responses:
+        '204': { description: Abgemeldet }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Aktueller Benutzer, Sitzungsinfo und Servereinstellungen
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }, {}]
+      responses:
+        '200':
+          description: '`user` ist null bei anonymen Anfragen'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, registration_enabled, limits]
+                properties:
+                  user:
+                    oneOf:
+                      - $ref: '#/components/schemas/User'
+                      - type: 'null'
+                  csrf_token: { type: string }
+                  registration_enabled: { type: boolean }
+                  limits: { $ref: '#/components/schemas/Limits' }
+    patch:
+      tags: [Auth]
+      summary: Eigenes Passwort ändern
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 10 }
+      responses:
+        '204': { description: Geändert }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects:
+    get:
+      tags: [Projects]
+      summary: Projekte auflisten
+      description: |
+        Angemeldet: eigene Projekte (Mitgliedschaft); mit `scope=public` zusätzlich alle öffentlichen.
+        Admin mit `scope=all`: alle Projekte.
+      parameters:
+        - name: scope
+          in: query
+          schema: { type: string, enum: [mine, public, all], default: mine }
+        - name: archived
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Projektliste
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  total: { type: integer }
+    post:
+      tags: [Projects]
+      summary: Projekt anlegen
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: Angelegt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects/{project}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Projects]
+      summary: Projekt abrufen (inkl. Messgrößen)
+      responses:
+        '200':
+          description: Projekt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Projects]
+      summary: Projekt bearbeiten (Mitglied/Admin)
+      description: Mittelpunkt und Radius lassen sich nur ändern, solange alle Messungen im neuen Kreis liegen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: Aktualisiert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Projects]
+      summary: Projekt löschen (Owner/Admin)
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    put:
+      tags: [Projects]
+      summary: Projekt archivieren (nimmt keine Messungen mehr an)
+      responses:
+        '204': { description: Archiviert }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Projects]
+      summary: Archivierung aufheben
+      responses:
+        '204': { description: Reaktiviert }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/members:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Members]
+      summary: Mitglieder auflisten (Mitglied/Admin)
+      responses:
+        '200':
+          description: Mitglieder
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Members]
+      summary: Mitglied hinzufügen (Owner/Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string }
+                role: { $ref: '#/components/schemas/ProjectRole' }
+      responses:
+        '201':
+          description: Hinzugefügt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /projects/{project}/members/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+      - name: user_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Members]
+      summary: Rolle ändern (Owner/Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: '#/components/schemas/ProjectRole' }
+      responses:
+        '200':
+          description: Geändert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Members]
+      summary: Mitglied entfernen (Owner/Admin)
+      responses:
+        '204': { description: Entfernt }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/metrics:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Metrics]
+      summary: Messgrößen des Projekts
+      responses:
+        '200':
+          description: Messgrößen
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Metric' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Metrics]
+      summary: Messgröße anlegen (Mitglied/Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MetricCreate' }
+      responses:
+        '201':
+          description: Angelegt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Metric' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects/{project}/metrics/{metric_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+      - $ref: '#/components/parameters/MetricId'
+    patch:
+      tags: [Metrics]
+      summary: Messgröße ändern (Mitglied/Admin)
+      description: Min/Max dürfen nur so geändert werden, dass bestehende Werte gültig bleiben, sonst 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MetricUpdate' }
+      responses:
+        '200':
+          description: Aktualisiert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Metric' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Metrics]
+      summary: Messgröße löschen (löscht zugehörige Werte)
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/measurements:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Measurements]
+      summary: Messungen im Zeitbereich abrufen
+      description: Ausgeblendete Messungen sehen nur Mitglieder/Admin (mit `include_hidden=true`).
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: include_hidden
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Limit'
+        - name: cursor
+          in: query
+          description: Opaker Cursor aus `next_cursor`
+          schema: { type: string }
+      responses:
+        '200':
+          description: Messungen
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Measurement' }
+                  next_cursor:
+                    type: [string, 'null']
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Measurements]
+      summary: Messung hinzufügen
+      description: |
+        Erlaubt für Mitglieder/Admin immer, für alle anderen (auch anonym) nur bei öffentlichen, bearbeitbaren Projekten (sonst 403 `project_not_editable`); archivierte Projekte lehnen mit 409 ab.
+        Bei anonymen Requests enthält die Antwort einmalig `edit_token`.
+        Punkt muss im Projektkreis liegen, Werte innerhalb der Min/Max-Grenzen, mindestens ein Wert.
+        Mit API-Token `measurements:write` kann `measured_at` vom Gerät gesetzt werden (nicht in der Zukunft).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeasurementCreate' }
+            examples:
+              esp32:
+                summary: Sensor per API-Token
+                value:
+                  lat: 49.0134
+                  lon: 12.1016
+                  values:
+                    - { metric_id: 3f2b5a4e-0000-4000-8000-000000000001, value: 21.4 }
+      responses:
+        '201':
+          description: Angelegt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MeasurementCreated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Projekt ist archiviert oder Limit erreicht
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /projects/{project}/measurements/{measurement_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+      - $ref: '#/components/parameters/MeasurementId'
+    patch:
+      tags: [Measurements]
+      summary: Messung ändern
+      description: |
+        Erlaubt für Mitglieder/Admin, den angemeldeten Autor oder anonym mit `X-Edit-Token`
+        (nur innerhalb des Änderungsfensters, Standard 15 min).
+        Ausblenden (`hidden`) nur für Mitglieder/Admin.
+      parameters:
+        - $ref: '#/components/parameters/EditToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeasurementUpdate' }
+      responses:
+        '200':
+          description: Aktualisiert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Measurement' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Measurements]
+      summary: Messung löschen
+      parameters:
+        - $ref: '#/components/parameters/EditToken'
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/heatmap:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Heatmap]
+      summary: Kriging-Heatmap einer Messgröße berechnen
+      description: |
+        Liefert ein Gitter innerhalb des Projektkreises (Zellen außerhalb sind `null`).
+        Antwort ist gecacht; Zeitbereich ist Teil des Schlüssels.
+        Bei zu wenigen Punkten `status: insufficient_data` ohne Gitter.
+      parameters:
+        - name: metric
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: resolution
+          in: query
+          description: Zellen entlang des Durchmessers
+          schema: { type: integer, minimum: 10, maximum: 200, default: 60 }
+        - name: bounds
+          in: query
+          description: Wertebereich der Farbskala fixieren (`auto` = aus Daten, `metric` = Min/Max der Messgröße)
+          schema: { type: string, enum: [auto, metric], default: metric }
+      responses:
+        '200':
+          description: Heatmap
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Heatmap' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects/{project}/exports:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    post:
+      tags: [Export]
+      summary: Export erzeugen
+      description: |
+        CSV, GeoJSON und Bilder werden synchron geliefert (200 mit Datei).
+        Video (spätere Ausbaustufe) läuft als Hintergrundjob (202 mit Job).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExportRequest' }
+      responses:
+        '200':
+          description: Exportdatei
+          content:
+            text/csv:
+              schema: { type: string }
+            application/geo+json:
+              schema: { type: object }
+            image/svg+xml:
+              schema: { type: string }
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        '202':
+          description: Job angelegt (nur Video)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /projects/{project}/exports/{job_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Export]
+      summary: Status eines Export-Jobs (Video, spätere Ausbaustufe)
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportJob' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{project}/exports/{job_id}/file:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Export]
+      summary: Fertige Exportdatei herunterladen
+      responses:
+        '200':
+          description: Datei
+          content:
+            video/mp4: { schema: { type: string, format: binary } }
+            video/webm: { schema: { type: string, format: binary } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Job noch nicht fertig
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /projects/{project}/ws:
+    parameters:
+      - $ref: '#/components/parameters/ProjectRef'
+    get:
+      tags: [Live]
+      summary: WebSocket für Live-Updates (Upgrade auf `ws`/`wss`)
+      description: |
+        Server sendet JSON-Nachrichten gemäß Schema `LiveEvent`. Der Client sendet nichts (außer Ping).
+        Anonyme Verbindungen nur bei öffentlichen Projekten; Nachrichten zu ausgeblendeten Messungen
+        gehen nur an Mitglieder/Admin als `measurement.hidden`, an andere als `measurement.deleted`.
+        Nach Reconnect `GET /measurements?from=<letzte Zeit>` zum Nachladen nutzen.
+      responses:
+        '101': { description: Switching Protocols }
+        '404': { $ref: '#/components/responses/NotFound' }
+      x-websocket-message-schema:
+        $ref: '#/components/schemas/LiveEvent'
+
+  /tokens:
+    get:
+      tags: [Tokens]
+      summary: Eigene API-Tokens auflisten
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200':
+          description: Tokens (ohne Klartext)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiToken' }
+    post:
+      tags: [Tokens]
+      summary: API-Token erzeugen
+      description: Token-Verwaltung ist nur per Session möglich, nicht mit einem API-Token.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApiTokenCreate' }
+      responses:
+        '201':
+          description: Klartext-Token wird nur hier einmalig angezeigt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiTokenCreated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /tokens/{token_id}:
+    delete:
+      tags: [Tokens]
+      summary: API-Token widerrufen
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Widerrufen }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Benutzer auflisten
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          description: Suche im Benutzernamen
+          schema: { type: string }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Benutzer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin]
+      summary: Benutzer anlegen (auch bei deaktivierter Registrierung)
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Credentials'
+                - type: object
+                  properties:
+                    is_admin: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Angelegt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /admin/users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Admin]
+      summary: Benutzer ändern (Admin-Flag, Sperre, Passwort-Reset)
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_admin: { type: boolean }
+                is_active: { type: boolean }
+                new_password: { type: string, format: password, minLength: 10 }
+      responses:
+        '200':
+          description: Geändert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Admin]
+      summary: Benutzer löschen
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/settings:
+    get:
+      tags: [Admin]
+      summary: Servereinstellungen lesen
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '200':
+          description: Einstellungen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Admin]
+      summary: Servereinstellungen ändern (z. B. Registrierung)
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Settings' }
+      responses:
+        '200':
+          description: Geändert
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Settings' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session-Cookie; zustandsändernde Requests zusätzlich mit `X-CSRF-Token`.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API-Token (`measurements:write` oder `full`).
+
+  parameters:
+    ProjectRef:
+      name: project
+      in: path
+      required: true
+      description: Projekt-UUID oder Slug
+      schema: { type: string }
+    MetricId:
+      name: metric_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MeasurementId:
+      name: measurement_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    From:
+      name: from
+      in: query
+      description: Beginn des Zeitbereichs (inklusiv)
+      schema: { type: string, format: date-time }
+    To:
+      name: to
+      in: query
+      description: Ende des Zeitbereichs (exklusiv)
+      schema: { type: string, format: date-time }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    EditToken:
+      name: X-Edit-Token
+      in: header
+      required: false
+      description: Token aus der Antwort beim Anlegen einer anonymen Messung
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Nicht angemeldet bzw. ungültige Zugangsdaten
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Keine Berechtigung
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RegistrationDisabled:
+      description: Registrierung deaktiviert
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Nicht gefunden (auch bei nicht öffentlichen Projekten für Unberechtigte)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Konflikt mit bestehendem Zustand
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Ungültige Eingabe (u. a. Punkt außerhalb des Kreises, Wert außerhalb der Grenzen)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Rate-Limit überschritten
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Maschinenlesbarer Code für die Übersetzung im Frontend
+          examples: [point_outside_circle, value_out_of_range, project_archived]
+        message:
+          type: string
+          description: Englische Fallback-Meldung
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }
+
+    Limits:
+      type: object
+      required: [max_radius_m, max_measurements_per_project]
+      properties:
+        max_radius_m: { type: integer, examples: [5000] }
+        max_measurements_per_project: { type: integer, examples: [5000] }
+        edit_window_seconds: { type: integer, examples: [900] }
+
+    Settings:
+      type: object
+      properties:
+        registration_enabled: { type: boolean }
+
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 32, pattern: '^[A-Za-z0-9_.-]+$' }
+        password: { type: string, format: password, minLength: 10 }
+
+    User:
+      type: object
+      required: [id, username, is_admin, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        is_admin: { type: boolean }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    ProjectRole:
+      type: string
+      enum: [owner, editor]
+
+    Member:
+      type: object
+      required: [user_id, username, role]
+      properties:
+        user_id: { type: string, format: uuid }
+        username: { type: string }
+        role: { $ref: '#/components/schemas/ProjectRole' }
+
+    Project:
+      type: object
+      required: [id, slug, name, center, radius_m, is_public, is_editable, archived, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        center: { $ref: '#/components/schemas/LatLon' }
+        radius_m: { type: integer, minimum: 1 }
+        is_public: { type: boolean }
+        is_editable: { type: boolean, description: 'Anonyme dürfen Messungen hinzufügen' }
+        archived: { type: boolean }
+        measurement_count: { type: integer }
+        my_role:
+          description: Rolle des anfragenden Benutzers, null wenn kein Mitglied
+          oneOf:
+            - $ref: '#/components/schemas/ProjectRole'
+            - type: 'null'
+        created_at: { type: string, format: date-time }
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          required: [metrics]
+          properties:
+            metrics:
+              type: array
+              items: { $ref: '#/components/schemas/Metric' }
+            first_measurement_at: { type: [string, 'null'], format: date-time }
+            last_measurement_at: { type: [string, 'null'], format: date-time }
+
+    ProjectCreate:
+      type: object
+      required: [name, center, radius_m]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        slug: { type: string, description: 'Optional, sonst aus dem Namen erzeugt', pattern: '^[a-z0-9-]+$' }
+        description: { type: string }
+        center: { $ref: '#/components/schemas/LatLon' }
+        radius_m: { type: integer, minimum: 1 }
+        is_public: { type: boolean, default: false }
+        is_editable: { type: boolean, default: false }
+        metrics:
+          type: array
+          items: { $ref: '#/components/schemas/MetricCreate' }
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        slug: { type: string, pattern: '^[a-z0-9-]+$' }
+        description: { type: [string, 'null'] }
+        center: { $ref: '#/components/schemas/LatLon' }
+        radius_m: { type: integer, minimum: 1 }
+        is_public: { type: boolean }
+        is_editable: { type: boolean }
+
+    LatLon:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+
+    MetricType:
+      type: string
+      enum: [number, scale]
+      description: '`number` = freie Zahl, `scale` = ganzzahlige Skala zwischen min und max (z. B. Wohlbefinden 1–10)'
+
+    ColorScale:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Vordefinierte Skala
+          enum: [viridis, plasma, coolwarm, rdylgn, rdylgn_r, custom]
+        stops:
+          type: array
+          description: Nur bei `custom`
+          items:
+            type: object
+            required: [at, color]
+            properties:
+              at: { type: number, minimum: 0, maximum: 1 }
+              color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+
+    Metric:
+      allOf:
+        - $ref: '#/components/schemas/MetricCreate'
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+
+    MetricCreate:
+      type: object
+      required: [name, type, min, max]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        unit: { type: [string, 'null'], maxLength: 16, examples: ['°C', '%', 'µg/m³'] }
+        type: { $ref: '#/components/schemas/MetricType' }
+        min: { type: number, description: Plausibilitätsgrenze (untere) }
+        max: { type: number, description: Plausibilitätsgrenze (obere) }
+        color_scale: { $ref: '#/components/schemas/ColorScale' }
+        position: { type: integer, minimum: 0 }
+
+    MetricUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        unit: { type: [string, 'null'] }
+        min: { type: number }
+        max: { type: number }
+        color_scale: { $ref: '#/components/schemas/ColorScale' }
+        position: { type: integer }
+
+    MeasurementValueIn:
+      type: object
+      required: [metric_id, value]
+      properties:
+        metric_id: { type: string, format: uuid }
+        value: { type: number }
+
+    MeasurementCreate:
+      type: object
+      required: [lat, lon, values]
+      properties:
+        lat: { type: number }
+        lon: { type: number }
+        values:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/MeasurementValueIn' }
+        author_name: { type: string, maxLength: 40, description: Optionaler Anzeigename }
+        note: { type: string, maxLength: 500 }
+        measured_at:
+          type: string
+          format: date-time
+          description: Nur mit API-Token; sonst Serverzeit
+
+    MeasurementUpdate:
+      type: object
+      properties:
+        values:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/MeasurementValueIn' }
+        author_name: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+        hidden:
+          type: boolean
+          description: Nur Mitglieder/Admin
+
+    Measurement:
+      type: object
+      required: [id, lat, lon, measured_at, values, hidden]
+      properties:
+        id: { type: string, format: uuid }
+        lat: { type: number }
+        lon: { type: number }
+        measured_at: { type: string, format: date-time }
+        values:
+          type: array
+          items: { $ref: '#/components/schemas/MeasurementValueIn' }
+        author_name: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+        source:
+          type: string
+          enum: [anonymous, user, api_token]
+        hidden: { type: boolean }
+
+    MeasurementCreated:
+      allOf:
+        - $ref: '#/components/schemas/Measurement'
+        - type: object
+          properties:
+            edit_token:
+              type: string
+              description: Nur bei anonymen Requests, wird nur einmal ausgegeben
+            edit_expires_at: { type: string, format: date-time }
+
+    Heatmap:
+      type: object
+      required: [status, metric_id]
+      properties:
+        status:
+          type: string
+          enum: [ok, insufficient_data, failed]
+        metric_id: { type: string, format: uuid }
+        from: { type: [string, 'null'], format: date-time }
+        to: { type: [string, 'null'], format: date-time }
+        point_count: { type: integer }
+        method:
+          type: string
+          enum: [kriging, idw_fallback]
+        bounds:
+          type: object
+          properties:
+            south: { type: number }
+            west: { type: number }
+            north: { type: number }
+            east: { type: number }
+        grid:
+          type: object
+          description: Zeilen von Nord nach Süd, Spalten von West nach Ost; `null` außerhalb des Kreises
+          properties:
+            rows: { type: integer }
+            cols: { type: integer }
+            values:
+              type: array
+              items:
+                type: array
+                items: { type: [number, 'null'] }
+            variance:
+              type: array
+              description: Kriging-Varianz (Unsicherheit), gleiche Form wie `values`
+              items:
+                type: array
+                items: { type: [number, 'null'] }
+        value_range:
+          type: object
+          properties:
+            min: { type: number }
+            max: { type: number }
+        computed_at: { type: string, format: date-time }
+
+    ExportRequest:
+      type: object
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [csv, geojson, svg, png, jpeg, video]
+          description: '`video` ist eine spätere Ausbaustufe'
+        select:
+          type: object
+          description: Welche Daten exportiert werden
+          properties:
+            metric_ids:
+              type: array
+              items: { type: string, format: uuid }
+              description: Leer/fehlend = alle
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
+            include_hidden: { type: boolean, default: false }
+            include_notes_and_names: { type: boolean, default: false }
+        image:
+          type: object
+          description: Nur für svg/png/jpeg/video
+          properties:
+            metric_id: { type: string, format: uuid }
+            width_px: { type: integer, minimum: 100, maximum: 8000, description: 'Nur png/jpeg' }
+            height_px: { type: integer, minimum: 100, maximum: 8000 }
+            dpi: { type: integer, minimum: 72, maximum: 600 }
+            basemap:
+              type: string
+              enum: [none, osm, satellite]
+              default: none
+              description: 'Bei svg nur `none` (keine Pixelgrafik)'
+            show_points: { type: boolean, default: true }
+            show_legend: { type: boolean, default: true }
+        video:
+          type: object
+          description: Spätere Ausbaustufe
+          properties:
+            step_seconds: { type: integer }
+            window_seconds: { type: integer }
+            fps: { type: integer, default: 10 }
+            container: { type: string, enum: [mp4, webm] }
+
+    ExportJob:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [queued, running, done, failed] }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        error: { type: [string, 'null'] }
+
+    ApiTokenScope:
+      type: string
+      enum: [measurements:write, full]
+
+    ApiTokenCreate:
+      type: object
+      required: [name, scope]
+      properties:
+        name: { type: string, maxLength: 60 }
+        scope: { $ref: '#/components/schemas/ApiTokenScope' }
+        project_id:
+          type: [string, 'null']
+          format: uuid
+          description: Optional auf ein Projekt beschränken
+        expires_at: { type: [string, 'null'], format: date-time }
+
+    ApiToken:
+      type: object
+      required: [id, name, scope, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        scope: { $ref: '#/components/schemas/ApiTokenScope' }
+        project_id: { type: [string, 'null'], format: uuid }
+        prefix: { type: string, description: 'Erste Zeichen zur Wiedererkennung' }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+
+    ApiTokenCreated:
+      allOf:
+        - $ref: '#/components/schemas/ApiToken'
+        - type: object
+          required: [token]
+          properties:
+            token: { type: string, description: Klartext, nur einmal sichtbar }
+
+    LiveEvent:
+      description: Nachricht über den WebSocket `/projects/{project}/ws`
+      oneOf:
+        - type: object
+          required: [type, measurement]
+          properties:
+            type: { const: measurement.created }
+            measurement: { $ref: '#/components/schemas/Measurement' }
+        - type: object
+          required: [type, measurement]
+          properties:
+            type: { const: measurement.updated }
+            measurement: { $ref: '#/components/schemas/Measurement' }
+        - type: object
+          required: [type, measurement_id]
+          properties:
+            type: { const: measurement.hidden }
+            measurement_id: { type: string, format: uuid }
+        - type: object
+          required: [type, measurement_id]
+          properties:
+            type: { const: measurement.deleted }
+            measurement_id: { type: string, format: uuid }
+        - type: object
+          required: [type, project]
+          properties:
+            type: { const: project.updated }
+            project: { $ref: '#/components/schemas/Project' }
+        - type: object
+          required: [type]
+          properties:
+            type: { const: project.archived }
+      discriminator:
+        propertyName: type

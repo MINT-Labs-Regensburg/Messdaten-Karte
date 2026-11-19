@@ -1,0 +1,17 @@
+# Wegwerf-Postgres nur für die Tests (tmpfs, kein Passwort, nur lokal erreichbar).
+services:
+  postgres-test:
+    image: postgres:15
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: messdaten_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d messdaten_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
