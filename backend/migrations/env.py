@@ -10,13 +10,13 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    # Reihenfolge: explizit gesetzte Option (Tests), Umgebungsvariable, .env über Settings
+    # Reihenfolge: explizit gesetzte Option (Tests), Umgebungsvariable, .env
     url = config.get_main_option("sqlalchemy.url") or os.environ.get("DATABASE_URL")
     if url:
         return url
-    from app.config import Settings
+    from app.config import DatabaseSettings
 
-    return Settings().database_url  # type: ignore[call-arg]
+    return DatabaseSettings().database_url  # type: ignore[call-arg]
 
 
 def run_migrations_online() -> None:

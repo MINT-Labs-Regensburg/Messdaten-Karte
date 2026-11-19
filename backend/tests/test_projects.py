@@ -5,11 +5,21 @@ from tests.conftest import CENTER
 
 def test_create_project_defaults_and_slug(api, alice):
     p = api.project(alice, name="Mein Gebiet Ä/Ö!")
-    assert p["slug"] == "mein-gebiet-a-o"
+    assert p["slug"] == "mein-gebiet-ae-oe"
     assert p["my_role"] == "owner"
     assert p["archived"] is False
     p2 = api.project(alice, name="Mein Gebiet Ä/Ö!")
-    assert p2["slug"] == "mein-gebiet-a-o-2"
+    assert p2["slug"] == "mein-gebiet-ae-oe-2"
+
+
+def test_slug_transliterates_german_characters(api, alice):
+    # ß und Umlaute dürfen nicht stillschweigend wegfallen („Gartenstrae“)
+    assert api.project(alice, name="Gartenstraße Quartier")["slug"] == "gartenstrasse-quartier"
+    assert (
+        api.project(alice, name="Über den Dächern von Köln")["slug"]
+        == "ueber-den-daechern-von-koeln"
+    )
+    assert api.project(alice, name="Café Zoë")["slug"] == "cafe-zoe"
 
 
 def test_addressing_by_uuid_and_slug(api, alice):

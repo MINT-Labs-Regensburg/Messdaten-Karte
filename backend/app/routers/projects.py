@@ -29,8 +29,14 @@ from app.services.geo import in_circle
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
 
+_GERMAN = str.maketrans(
+    {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "ae", "Ö": "oe", "Ü": "ue", "ß": "ss"}
+)
+
+
 def slugify(name: str) -> str:
-    text = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    # Deutsche Umschrift vor der ASCII-Wandlung, sonst fallen ß und Umlaute weg
+    text = unicodedata.normalize("NFKD", name.translate(_GERMAN)).encode("ascii", "ignore").decode()
     text = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:80]
     return text or "projekt"
 

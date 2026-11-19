@@ -2,12 +2,17 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    """Konfiguration ausschließlich über Umgebungsvariablen (bzw. `.env`)."""
+class DatabaseSettings(BaseSettings):
+    """Nur die Datenbank-URL, z. B. für Alembic (braucht kein SECRET_KEY)."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str
+
+
+class Settings(DatabaseSettings):
+    """Konfiguration ausschließlich über Umgebungsvariablen (bzw. `.env`)."""
+
     secret_key: str = Field(min_length=32)
 
     # Sessions / Cookies
