@@ -199,6 +199,16 @@ Code in `frontend/` (React 18, Vite, TypeScript), Entwicklung und Tests siehe `f
 - **Datenschutz/Verbrauch**: Schriften werden selbst ausgeliefert (keine Google-Fonts-Anfrage); Seiten mit Karte, Einstellungen und Admin werden erst bei Bedarf geladen; Dunkelmodus folgt dem System und ist umschaltbar.
 - **Export**: Dialog für CSV, GeoJSON, SVG, PNG und JPEG; es wird gewählt, welche Daten enthalten sein sollen (Messgrößen, Zeitbereich, Ausgeblendete, Namen/Notizen). PNG/JPEG standardmäßig mit Straßenkarte (Satellit oder ohne Karte wählbar).
 
+## CI und Release (Stand 2026-11-19)
+
+GitHub Actions in `.github/workflows/`:
+
+- **`ci.yml`** läuft bei **jedem Push auf einen Branch und jedem Pull Request**: Backend (`ruff format --check`, `ruff check`, `pytest` gegen eine Postgres-15-Testdatenbank als Service-Container), Frontend (`npm run typecheck`, `npm test`, `npm run build`) und ein Probebau beider Docker-Images (ohne Veröffentlichung) samt Prüfung von `compose.yaml`. Ein neuer Push bricht den laufenden Lauf desselben Branches ab.
+- **`release.yml`** startet bei einem Versions-Tag (`v1.2.0`, Vorabversion `v1.2.0-rc.1`): zuerst dieselben Tests (über `workflow_call`), dann werden beide **Docker-Images für `linux/amd64` und `linux/arm64`** gebaut und nach GHCR veröffentlicht, danach legt der Workflow das **GitHub Release** mit automatisch erzeugten Notizen an (Vorabversionen als „Pre-release“; existiert das Release schon, weil es über die Oberfläche angelegt wurde, bleibt es unverändert).
+- **Images**: `ghcr.io/<besitzer>/messdaten-karte-backend` und `…-frontend`, Tags `1.2.3`, `1.2`, `1` und `latest` (Vorabversionen nur mit ihrem eigenen Tag).
+- **Release erstellen**: `git tag v1.2.0 && git push origin v1.2.0` oder auf GitHub „Draft a new release“ mit neuem Tag. Nach dem ersten Lauf die Pakete einmalig unter „Packages“ auf öffentlich stellen, falls der Server ohne Anmeldung ziehen soll.
+- **Betrieb mit den Images**: in `compose.yaml` statt `build:` das passende `image: ghcr.io/<besitzer>/messdaten-karte-backend:1.2.0` bzw. `…-frontend:1.2.0` eintragen (oder per Override-Datei) und `docker compose pull && docker compose up -d`.
+
 ## Offene Fragen
 
 Keine mehr aus der ersten Runde. Neue Punkte bei Bedarf hier ergänzen.

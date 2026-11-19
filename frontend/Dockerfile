@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Erwartet ein Vite-Projekt in diesem Ordner (package.json, package-lock.json, `npm run build` -> dist/).
-FROM node:22-alpine AS build
+# Das Ergebnis (statische Dateien) ist plattformunabhängig: auf der Build-Plattform bauen, nicht emuliert
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
