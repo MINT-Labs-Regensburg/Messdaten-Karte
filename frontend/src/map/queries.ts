@@ -42,7 +42,7 @@ export function useHeatmap(
         from,
         to,
         resolution,
-        bounds: 'metric',
+        bounds: 'auto',
       }),
     enabled: !!projectId && !!metricId,
     placeholderData: keepPreviousData,

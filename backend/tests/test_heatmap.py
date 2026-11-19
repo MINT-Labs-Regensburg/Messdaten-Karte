@@ -110,11 +110,52 @@ def test_many_points_are_aggregated():
     assert result["point_count"] < 400
 
 
-def test_auto_bounds_use_data_range():
+def test_auto_bounds_use_exactly_the_data_range():
     result = compute_grid(FIVE, spec(vmin=None, vmax=None))
     assert result["status"] == "ok"
-    lo, hi = result["value_range"]["min"], result["value_range"]["max"]
-    assert lo < hi
+    assert result["value_range"] == {"min": 10.0, "max": 30.0}  # kleinster/größter Messwert
+    flat = [v for row in result["grid"]["values"] for v in row if v is not None]
+    assert min(flat) >= 10.0 and max(flat) <= 30.0  # Interpolation bleibt in diesem Bereich
+
+
+# Fünf Punkte wie im Fehlerbericht: Wohlbefinden 1..10, weit verstreut im Kreis
+SPARSE = pts((-150, 120, 3), (60, 200, 9), (-250, -40, 2), (180, -20, 1), (-30, -180, 8))
+
+
+def test_points_influence_each_other_instead_of_falling_back_to_the_mean():
+    """Regression: Das Feld darf abseits der Punkte nicht auf den Mittelwert zurückfallen."""
+    result = compute_grid(SPARSE, spec(radius_m=400, resolution=40, vmin=None, vmax=None))
+    assert result["method"] == "kriging"
+    values = [v for row in result["grid"]["values"] for v in row if v is not None]
+    mean = sum([3, 9, 2, 1, 8]) / 5
+    near_mean = [v for v in values if abs(v - mean) < 0.05 * (9 - 1)]
+    assert len(near_mean) / len(values) < 0.2  # früher: praktisch die ganze Fläche
+    assert max(values) - min(values) > 5  # fast der ganze Wertebereich kommt im Bild vor
+    assert min(values) >= 1 and max(values) <= 9
+
+
+def test_field_is_close_to_the_values_at_the_points():
+    result = compute_grid(SPARSE, spec(radius_m=400, resolution=100, vmin=None, vmax=None))
+    n = 100
+    cell = 800 / n
+    for x, y, value in [(-150, 120, 3), (60, 200, 9), (180, -20, 1)]:
+        i, j = int((400 - y) / cell), int((x + 400) / cell)
+        assert abs(result["grid"]["values"][i][j] - value) < 0.8
+
+
+def test_kriging_follows_a_trend_instead_of_averaging_it_away():
+    # Werte steigen von West nach Ost; im Osten ohne Messpunkte darf es nicht zum Mittelwert werden
+    trend = pts((-300, 0, 10), (-200, 100, 12), (-100, -100, 14), (0, 50, 16), (100, -50, 18))
+    result = compute_grid(trend, spec(resolution=40, vmin=None, vmax=None))
+    rows = result["grid"]["values"]
+    west = [v for row in rows for v in row[:8] if v is not None]
+    east = [v for row in rows for v in row[-8:] if v is not None]
+    assert sum(east) / len(east) > sum(west) / len(west) + 3
+
+
+def test_fixed_metric_bounds_are_still_available():
+    result = compute_grid(FIVE, spec(vmin=-30.0, vmax=50.0))
+    assert result["value_range"] == {"min": -30.0, "max": 50.0}
 
 
 # --------------------------------------------------------------------- API
@@ -195,10 +236,10 @@ def test_heatmap_per_metric(api, alice):
         lat, lon = from_local_xy(-200 + i * 100, i * 20, LAT, LON)
         api.measure(p, lat=lat, lon=lon, values=values(p, 20, mood=1 + i * 2))
     mood = p["metrics"]["Wohlbefinden"]["id"]
-    body = heat(api, p, metric=mood).json()
-    assert body["status"] == "ok" and body["value_range"] == {"min": 1.0, "max": 10.0}
-    auto = heat(api, p, metric=mood, bounds="auto").json()
-    assert auto["value_range"]["min"] >= 1.0
+    body = heat(api, p, metric=mood).json()  # Standard: Skala aus den vorhandenen Daten
+    assert body["status"] == "ok" and body["value_range"] == {"min": 1.0, "max": 9.0}
+    fixed = heat(api, p, metric=mood, bounds="metric").json()
+    assert fixed["value_range"] == {"min": 1.0, "max": 10.0}  # Grenzen der Messgröße
 
 
 def test_heatmap_validation(api, alice):

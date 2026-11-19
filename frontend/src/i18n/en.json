@@ -1,5 +1,7 @@
 {
-  "app": { "name": "Messdaten Karte" },
+  "app": {
+    "name": "Messdaten Karte"
+  },
   "common": {
     "add": "Add",
     "cancel": "Cancel",
@@ -61,7 +63,10 @@
     "password_changed": "Password changed. Other sessions were signed out.",
     "reset_hint": "Forgot your password? An admin can reset it for you."
   },
-  "roles": { "owner": "Owner", "editor": "Editor" },
+  "roles": {
+    "owner": "Owner",
+    "editor": "Editor"
+  },
   "projects": {
     "title": "Projects",
     "new": "New project",
@@ -193,7 +198,10 @@
     "geo_denied": "Access to your location was denied.",
     "geo_failed": "Your location could not be determined.",
     "not_found_title": "Map not found",
-    "not_found_text": "This map does not exist or is not public. If you are a member, please sign in."
+    "not_found_text": "This map does not exist or is not public. If you are a member, please sign in.",
+    "no_values": "no values",
+    "legend_empty": "No measurements in the selected time range yet.",
+    "legend_constant": "All measurements are equal: {{value}}"
   },
   "time": {
     "title": "Time range",
@@ -273,11 +281,16 @@
     "size_help": "100 to 8000. Larger images take longer.",
     "show_points": "Show measurement points",
     "show_legend": "Show legend",
-    "svg_help": "SVG contains vector shapes only: heatmap, circle, points and legend, without a background map.",
-    "basemap_help": "Images are created without a background map.",
+    "svg_help": "SVG contains vector shapes only (heatmap, circle, points, legend, scale bar), no map background. Choose PNG or JPEG for an image with the map.",
+    "basemap_help": "The server loads the map and adds it to the image with attribution; this can take a few seconds.",
     "include_hidden": "Include hidden measurements",
     "include_notes": "Include names and notes",
-    "download": "Download"
+    "download": "Download",
+    "basemap": "Map background",
+    "basemap_osm": "Street map (OpenStreetMap)",
+    "basemap_satellite": "Satellite (Esri)",
+    "basemap_none": "No map background",
+    "nomap_help": "The image shows heatmap, circle, points and scale bar on a neutral background."
   },
   "tokens": {
     "title": "API tokens",
@@ -394,6 +407,7 @@
     "invalid_cursor": "Invalid page marker.",
     "format_not_supported": "This format is not supported yet.",
     "basemap_not_supported": "This background is not supported for export.",
-    "heatmap_failed": "The heatmap could not be computed."
+    "heatmap_failed": "The heatmap could not be computed.",
+    "basemap_unavailable": "The map background could not be loaded. Try again later or export without a map background."
   }
 }

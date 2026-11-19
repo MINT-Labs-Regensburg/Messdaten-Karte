@@ -6,9 +6,11 @@ dependencies = [
     "alembic>=1.20.1",
     "contourpy>=1.4.0",
     "fastapi>=0.165.0",
+    "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.5",
+    "pillow>=13.0.0",
     "psycopg[binary]>=3.3.9",
     "pydantic>=2.14.4",
     "pydantic-settings>=2.16.3",
@@ -21,7 +23,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.6",

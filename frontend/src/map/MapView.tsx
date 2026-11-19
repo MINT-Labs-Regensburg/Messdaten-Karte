@@ -1,11 +1,12 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { memo, useEffect, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Circle, CircleMarker, MapContainer, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet'
 
 import type { Heatmap, Measurement, Metric, ProjectDetail } from '../api/types'
 import { colorAt, normalize } from '../lib/colorScales'
 import { ESRI, OSM } from '../lib/tiles'
+import type { Range } from './dataRange'
 import { renderHeatmapDataUrl } from './heatCanvas'
 
 export interface DraftPoint {
@@ -20,6 +21,8 @@ export interface UserLocation extends DraftPoint {
 interface MapViewProps {
   project: ProjectDetail
   metric?: Metric
+  /** Farbskala: kleinster/größter Messwert im gewählten Zeitbereich */
+  range: Range | null
   measurements: Measurement[]
   heatmap?: Heatmap
   basemap: 'street' | 'satellite'
@@ -37,17 +40,18 @@ function Clicks({ onMapClick }: { onMapClick: (p: DraftPoint) => void }) {
   return null
 }
 
-function FitProject({ project }: { project: ProjectDetail }) {
+function FitProject({ project, onFitted }: { project: ProjectDetail; onFitted: (done: boolean) => void }) {
   const map = useMap()
   useEffect(() => {
     const bounds = L.latLng(project.center.lat, project.center.lon).toBounds(project.radius_m * 2.3)
     // Leaflet merkt sich die Containergröße; nach Layout-Änderungen muss sie neu gelesen werden
     map.invalidateSize()
     map.fitBounds(bounds, { animate: false })
+    onFitted(true)
     const observer = new ResizeObserver(() => map.invalidateSize())
     observer.observe(map.getContainer())
     return () => observer.disconnect()
-  }, [map, project.id, project.center.lat, project.center.lon, project.radius_m])
+  }, [map, onFitted, project.id, project.center.lat, project.center.lon, project.radius_m])
   return null
 }
 
@@ -59,35 +63,47 @@ function FlyTo({ focus }: { focus: MapViewProps['focus'] }) {
   return null
 }
 
-function HeatLayer({ heatmap, metric }: { heatmap?: Heatmap; metric?: Metric }) {
+function HeatLayer({ heatmap, metric, range }: { heatmap?: Heatmap; metric?: Metric; range: Range | null }) {
   const map = useMap()
+  const overlay = useRef<L.ImageOverlay | null>(null)
   const url = useMemo(
-    () => (heatmap && metric ? renderHeatmapDataUrl(heatmap, metric.color_scale) : null),
-    [heatmap, metric],
+    () => (heatmap && metric ? renderHeatmapDataUrl(heatmap, metric.color_scale, range) : null),
+    [heatmap, metric, range],
   )
+  const bounds = heatmap?.bounds
+
   useEffect(() => {
     if (!map.getPane('heat')) {
       const pane = map.createPane('heat')
       pane.style.zIndex = '350'
       pane.style.pointerEvents = 'none'
     }
-  }, [map])
-  useEffect(() => {
-    if (!url || !heatmap?.bounds) return
-    const { south, west, north, east } = heatmap.bounds
-    const overlay = L.imageOverlay(
-      url,
-      [
-        [south, west],
-        [north, east],
-      ],
-      { opacity: 0.8, interactive: false, pane: 'heat', className: 'heat-overlay' },
-    )
-    overlay.addTo(map)
     return () => {
-      overlay.remove()
+      overlay.current?.remove()
+      overlay.current = null
     }
-  }, [map, url, heatmap?.bounds])
+  }, [map])
+
+  // Das Overlay bleibt bestehen und bekommt nur neue Bilddaten, statt bei jeder Aktualisierung
+  // neu angelegt zu werden (das würde laufende Bildladevorgänge abbrechen).
+  useEffect(() => {
+    if (!url || !bounds) {
+      overlay.current?.remove()
+      overlay.current = null
+      return
+    }
+    const box = L.latLngBounds([bounds.south, bounds.west], [bounds.north, bounds.east])
+    if (overlay.current) {
+      overlay.current.setUrl(url).setBounds(box)
+    } else {
+      overlay.current = L.imageOverlay(url, box, {
+        opacity: 0.8,
+        interactive: false,
+        pane: 'heat',
+        className: 'heat-overlay',
+      }).addTo(map)
+    }
+  }, [map, url, bounds])
   return null
 }
 
@@ -119,20 +135,23 @@ const Point = memo(function Point({ m, fill, selected, onSelect }: PointProps) {
 })
 
 export function MapView(props: MapViewProps) {
-  const { project, metric, measurements, heatmap, basemap, dark, draft, selectedId, userLocation, focus } = props
+  const { project, metric, range, measurements, heatmap, basemap, dark, draft, selectedId, userLocation, focus } = props
   const tiles = basemap === 'satellite' ? ESRI : OSM
+  // Kacheln erst laden, wenn die Karte auf das Projektgebiet gezoomt ist; sonst werden die Kacheln
+  // der Start-Zoomstufe sofort wieder abgebrochen (im Browser als NS_BINDING_ABORTED sichtbar).
+  const [fitted, setFitted] = useState(false)
 
   const points = useMemo(
     () =>
       measurements.map((m) => {
         const value = metric ? m.values.find((v) => v.metric_id === metric.id)?.value : undefined
         const fill =
-          metric && value !== undefined
-            ? colorAt(metric.color_scale, normalize(value, metric.min, metric.max))
+          metric && range && value !== undefined
+            ? colorAt(metric.color_scale, normalize(value, range.min, range.max))
             : '#9AA79F'
         return { m, fill }
       }),
-    [measurements, metric],
+    [measurements, metric, range],
   )
 
   return (
@@ -145,12 +164,12 @@ export function MapView(props: MapViewProps) {
       className={`map-canvas ${basemap === 'street' && dark ? 'map-dark' : ''}`}
       style={{ height: '100%', width: '100%' }}
     >
-      <TileLayer key={basemap} url={tiles.url} maxZoom={19} />
-      <FitProject project={project} />
+      {fitted && <TileLayer key={basemap} url={tiles.url} maxZoom={19} />}
+      <FitProject project={project} onFitted={setFitted} />
       <FlyTo focus={focus} />
       <ZoomControl position="bottomright" />
       <Clicks onMapClick={props.onMapClick} />
-      <HeatLayer heatmap={heatmap} metric={metric} />
+      <HeatLayer heatmap={heatmap} metric={metric} range={range} />
       <Circle
         center={[project.center.lat, project.center.lon]}
         radius={project.radius_m}

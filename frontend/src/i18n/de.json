@@ -1,5 +1,7 @@
 {
-  "app": { "name": "Messdaten Karte" },
+  "app": {
+    "name": "Messdaten Karte"
+  },
   "common": {
     "add": "Hinzufügen",
     "cancel": "Abbrechen",
@@ -61,7 +63,10 @@
     "password_changed": "Passwort geändert. Andere Sitzungen wurden abgemeldet.",
     "reset_hint": "Passwort vergessen? Ein Admin kann es für dich zurücksetzen."
   },
-  "roles": { "owner": "Besitzer", "editor": "Editor" },
+  "roles": {
+    "owner": "Besitzer",
+    "editor": "Editor"
+  },
   "projects": {
     "title": "Projekte",
     "new": "Neues Projekt",
@@ -193,7 +198,10 @@
     "geo_denied": "Der Zugriff auf deinen Standort wurde abgelehnt.",
     "geo_failed": "Der Standort konnte nicht bestimmt werden.",
     "not_found_title": "Karte nicht gefunden",
-    "not_found_text": "Diese Karte gibt es nicht oder sie ist nicht öffentlich. Wenn du Mitglied bist, melde dich an."
+    "not_found_text": "Diese Karte gibt es nicht oder sie ist nicht öffentlich. Wenn du Mitglied bist, melde dich an.",
+    "no_values": "keine Werte",
+    "legend_empty": "Noch keine Messwerte im gewählten Zeitraum.",
+    "legend_constant": "Alle Messwerte sind gleich: {{value}}"
   },
   "time": {
     "title": "Zeitraum",
@@ -273,11 +281,16 @@
     "size_help": "100 bis 8000. Größere Bilder brauchen länger.",
     "show_points": "Messpunkte zeigen",
     "show_legend": "Legende zeigen",
-    "svg_help": "SVG enthält nur Vektorformen: Heatmap, Kreis, Punkte und Legende, ohne Hintergrundkarte.",
-    "basemap_help": "Bilder werden ohne Hintergrundkarte erzeugt.",
+    "svg_help": "SVG enthält nur Vektorformen (Heatmap, Kreis, Punkte, Legende, Maßstab), keine Hintergrundkarte. Für ein Bild mit Karte wähle PNG oder JPEG.",
+    "basemap_help": "Der Server lädt die Karte und fügt sie mit Quellenangabe ins Bild ein; das kann einige Sekunden dauern.",
     "include_hidden": "Ausgeblendete Messungen einschließen",
     "include_notes": "Namen und Notizen einschließen",
-    "download": "Herunterladen"
+    "download": "Herunterladen",
+    "basemap": "Hintergrundkarte",
+    "basemap_osm": "Straßenkarte (OpenStreetMap)",
+    "basemap_satellite": "Satellit (Esri)",
+    "basemap_none": "Ohne Hintergrundkarte",
+    "nomap_help": "Das Bild zeigt Heatmap, Kreis, Punkte und Maßstab auf neutralem Hintergrund."
   },
   "tokens": {
     "title": "API-Tokens",
@@ -394,6 +407,7 @@
     "invalid_cursor": "Ungültige Seitenmarke.",
     "format_not_supported": "Dieses Format wird noch nicht unterstützt.",
     "basemap_not_supported": "Dieser Hintergrund wird für den Export nicht unterstützt.",
-    "heatmap_failed": "Die Heatmap konnte nicht berechnet werden."
+    "heatmap_failed": "Die Heatmap konnte nicht berechnet werden.",
+    "basemap_unavailable": "Die Hintergrundkarte konnte nicht geladen werden. Versuche es später erneut oder exportiere ohne Hintergrundkarte."
   }
 }

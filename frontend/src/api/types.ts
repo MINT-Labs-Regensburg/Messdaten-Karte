@@ -206,7 +206,7 @@ export interface ExportRequest {
     metric_id?: string
     width_px?: number
     height_px?: number
-    basemap: 'none'
+    basemap: 'none' | 'osm' | 'satellite'
     show_points: boolean
     show_legend: boolean
   }

@@ -175,9 +175,103 @@ def test_image_validation(api, alice):
     assert (
         api.post(url, json={"format": "svg"}).json()["code"] == "unknown_metric"
     )  # metric_id fehlt
-    r = api.post(url, json=image_body(p, "png", basemap="osm"))
+    r = api.post(url, json=image_body(p, "svg", basemap="osm"))
     assert r.status_code == 422 and r.json()["code"] == "basemap_not_supported"
     assert api.post(url, json=image_body(p, "svg", basemap="satellite")).status_code == 422
+    assert api.post(url, json=image_body(p, "png", basemap="strasse")).status_code == 422
     assert api.post(url, json=image_body(p, "png", width_px=50)).status_code == 422
     assert api.post(url, json=image_body(p, "png", width_px=9000)).status_code == 422
     assert api.post(url, json=image_body(p, "png", dpi=10)).status_code == 422
+
+
+# ------------------------------------------------- Bildexport mit Hintergrundkarte
+
+MAGENTA = (200, 0, 200)
+
+
+def fake_tiles(color=MAGENTA, fail=False):
+    """Ersetzt den Kachelserver: liefert einfarbige Kacheln und merkt sich die angefragten URLs."""
+    from PIL import Image
+
+    from app.services.tiles import TileFetcher
+
+    urls: list[str] = []
+    buffer = io.BytesIO()
+    Image.new("RGB", (256, 256), color).save(buffer, format="PNG")
+
+    async def fetch(url: str) -> bytes:
+        urls.append(url)
+        if fail:
+            raise RuntimeError("Kachelserver nicht erreichbar")
+        return buffer.getvalue()
+
+    return TileFetcher("test-agent", fetch=fetch), urls
+
+
+def share_of_color(png: bytes, color=MAGENTA, tolerance=40) -> float:
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    data = image.tobytes()
+    pixels = [tuple(data[i : i + 3]) for i in range(0, len(data), 3)]
+    close = sum(
+        1 for px in pixels if all(abs(a - b) <= tolerance for a, b in zip(px, color, strict=True))
+    )
+    return close / len(pixels)
+
+
+def test_png_contains_the_map_background(api, alice):
+    p = api.project(alice)
+    points_for_image(api, p)
+    api.client.app.state.tile_fetcher, urls = fake_tiles()
+    body = image_body(p, "png", width_px=500, height_px=500, basemap="osm")
+    r = api.post(f"/projects/{p['id']}/exports", json=body)
+    assert r.status_code == 200 and r.content[:4] == b"\x89PNG"
+    assert urls and all("tile.openstreetmap.org" in u for u in urls)
+    assert share_of_color(r.content) > 0.05  # Hintergrundkarte ist im Bild (außerhalb des Kreises)
+
+    without = api.post(
+        f"/projects/{p['id']}/exports", json=image_body(p, "png", width_px=500, height_px=500)
+    )
+    assert share_of_color(without.content) == 0  # ohne Hintergrundkarte keine Kacheln
+
+
+def test_jpeg_and_satellite_background(api, alice):
+    p = api.project(alice)
+    points_for_image(api, p)
+    api.client.app.state.tile_fetcher, urls = fake_tiles()
+    body = image_body(p, "jpeg", width_px=400, height_px=400, basemap="satellite")
+    r = api.post(f"/projects/{p['id']}/exports", json=body)
+    assert r.status_code == 200 and r.content[:2] == b"\xff\xd8"
+    assert urls and all("arcgisonline.com" in u for u in urls)
+
+
+def test_background_works_without_enough_points_for_a_heatmap(api, alice):
+    p = api.project(alice)
+    api.client.app.state.tile_fetcher, _ = fake_tiles()
+    r = api.post(
+        f"/projects/{p['id']}/exports",
+        json=image_body(p, "png", width_px=300, height_px=300, basemap="osm"),
+    )
+    assert r.status_code == 200 and share_of_color(r.content) > 0.05
+
+
+def test_unreachable_tile_server_gives_a_clear_error(api, alice):
+    p = api.project(alice)
+    points_for_image(api, p)
+    api.client.app.state.tile_fetcher, _ = fake_tiles(fail=True)
+    r = api.post(
+        f"/projects/{p['id']}/exports",
+        json=image_body(p, "png", width_px=300, height_px=300, basemap="osm"),
+    )
+    assert r.status_code == 502 and r.json()["code"] == "basemap_unavailable"
+
+
+def test_export_requests_a_bounded_number_of_tiles(api, alice):
+    p = api.project(alice)
+    api.client.app.state.tile_fetcher, urls = fake_tiles()
+    api.post(
+        f"/projects/{p['id']}/exports",
+        json=image_body(p, "png", width_px=8000, height_px=8000, basemap="osm"),
+    )
+    assert 0 < len(urls) <= 49  # auch bei maximaler Bildgröße nicht hunderte Anfragen

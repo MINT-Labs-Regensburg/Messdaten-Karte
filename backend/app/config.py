@@ -40,6 +40,12 @@ class Settings(DatabaseSettings):
     heatmap_min_interval_s: float = 2.0
     heatmap_cache_size: int = 256
 
+    # Bildexport mit Hintergrundkarte: Der Server lädt die Kacheln (siehe app/services/tiles.py).
+    # Die Nutzungsbedingungen von OSM verlangen einen User-Agent, der die Anwendung identifiziert;
+    # bei öffentlichem Betrieb bitte Kontaktdaten ergänzen.
+    tile_user_agent: str = "MessdatenKarte/0.1 (self-hosted)"
+    export_max_tiles: int = 49
+
     # Erster Admin (optional)
     admin_username: str | None = None
     admin_password: str | None = None

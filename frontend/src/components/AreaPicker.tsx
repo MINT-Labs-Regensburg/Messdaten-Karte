@@ -1,6 +1,6 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Circle, MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 
@@ -23,7 +23,15 @@ function ClickToSet({ onPick }: { onPick: (c: LatLon) => void }) {
 }
 
 /** Hält den Kreis sichtbar, wenn Mittelpunkt oder Radius über die Felder geändert werden. */
-function KeepVisible({ center, radius }: { center: LatLon | null; radius: number }) {
+function KeepVisible({
+  center,
+  radius,
+  onFitted,
+}: {
+  center: LatLon | null
+  radius: number
+  onFitted: () => void
+}) {
   const map = useMap()
   const first = useRef(true)
   useEffect(() => {
@@ -34,13 +42,17 @@ function KeepVisible({ center, radius }: { center: LatLon | null; radius: number
       map.fitBounds(bounds, { animate: !first.current })
     }
     first.current = false
-  }, [map, center, radius])
+    onFitted()
+  }, [map, center, radius, onFitted])
   return null
 }
 
 export function AreaPicker({ center, radius, maxRadius, onChange }: AreaPickerProps) {
   const { t } = useTranslation()
   const current = center ?? { lat: 0, lon: 0 }
+  // Kacheln erst nach dem ersten Zoomen auf den Kreis laden (sonst werden Start-Kacheln abgebrochen)
+  const [ready, setReady] = useState(!center)
+  const markReady = useCallback(() => setReady(true), [])
   const eventHandlers = useMemo(
     () => ({
       dragend: (e: L.LeafletEvent) => {
@@ -74,9 +86,9 @@ export function AreaPicker({ center, radius, maxRadius, onChange }: AreaPickerPr
           scrollWheelZoom
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer url={OSM.url} attribution={OSM.attribution} />
+          {ready && <TileLayer url={OSM.url} attribution={OSM.attribution} />}
           <ClickToSet onPick={(c) => onChange({ center: c, radius })} />
-          <KeepVisible center={center} radius={radius} />
+          <KeepVisible center={center} radius={radius} onFitted={markReady} />
           {center && (
             <>
               <Circle

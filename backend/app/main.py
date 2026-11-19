@@ -25,6 +25,7 @@ from app.security import hash_password
 from app.services.heatmap import HeatmapCache
 from app.services.hub import Hub
 from app.services.ratelimit import RateLimiter
+from app.services.tiles import TileFetcher
 
 
 async def bootstrap_admin(app: FastAPI) -> None:
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await bootstrap_admin(app)
         yield
+        await app.state.tile_fetcher.aclose()
         await app.state.engine.dispose()
 
     app = FastAPI(title="Messdaten Karte API", version="0.1.0", lifespan=lifespan)
@@ -61,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
     app.state.limiter = RateLimiter()
     app.state.hub = Hub()
+    app.state.tile_fetcher = TileFetcher(settings.tile_user_agent, settings.export_max_tiles)
     app.state.heatmap_cache = HeatmapCache(
         settings.heatmap_cache_size, settings.heatmap_min_interval_s
     )

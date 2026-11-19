@@ -8,11 +8,13 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 
 from app.deps import DB, Access
-from app.errors import invalid
+from app.errors import ApiError, invalid
 from app.models import Measurement, MeasurementValue, Metric
 from app.routers.heatmap import heatmap_result
 from app.schemas import ExportRequest
+from app.services.geo import map_extent
 from app.services.render import describe_range, render_map
+from app.services.tiles import BasemapUnavailable, TileFetcher
 
 router = APIRouter(prefix="/projects/{project}/exports", tags=["Export"])
 
@@ -142,10 +144,11 @@ async def _render_image(
     request: Request, access: Access, db: DB, body: ExportRequest, metrics: list[Metric]
 ) -> bytes:
     project, img, sel = access.project, body.image, body.select
-    if img.basemap != "none":
+    if img.basemap != "none" and body.format == "svg":
+        # SVG enthält nur Vektorformen; eine Pixelkarte lässt sich nicht sinnvoll einbetten
         raise invalid(
             "basemap_not_supported",
-            "Only basemap 'none' is supported (tile usage terms)",
+            "SVG exports contain vector shapes only; use PNG or JPEG for a map background",
             "image.basemap",
         )
     metric = (
@@ -158,7 +161,7 @@ async def _render_image(
             "image.metric_id",
         )
 
-    heat = await heatmap_result(request, project, metric, sel.from_, sel.to, 100, "metric")
+    heat = await heatmap_result(request, project, metric, sel.from_, sel.to, 100, "auto")
     if heat.get("status") == "failed":
         raise invalid("heatmap_failed", "Heatmap could not be computed", "image.metric_id")
 
@@ -179,6 +182,18 @@ async def _render_image(
 
     width = img.width_px or img.height_px or DEFAULT_IMAGE_PX
     height = img.height_px or img.width_px or DEFAULT_IMAGE_PX
+
+    basemap = None
+    if img.basemap != "none":
+        fetcher: TileFetcher = request.app.state.tile_fetcher
+        extent = map_extent(project.center_lat, project.center_lon, project.radius_m)
+        try:
+            basemap = await fetcher.basemap(img.basemap, extent, max(width, height))
+        except BasemapUnavailable:
+            raise ApiError(
+                502, "basemap_unavailable", "The map background could not be loaded"
+            ) from None
+
     return await asyncio.to_thread(
         render_map,
         fmt=body.format,
@@ -192,4 +207,5 @@ async def _render_image(
         dpi=img.dpi or 100,
         show_points=img.show_points,
         show_legend=img.show_legend,
+        basemap=basemap,
     )

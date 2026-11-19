@@ -97,7 +97,7 @@ export function gradientCss(scale: ColorScale): string {
   return `linear-gradient(90deg, ${parts.join(', ')})`
 }
 
-/** Normiert einen Messwert auf 0..1 innerhalb von [min, max]. */
+/** Normiert einen Messwert auf 0..1 innerhalb von [min, max]; sind alle Werte gleich, gilt die Skalenmitte. */
 export function normalize(value: number, min: number, max: number): number {
-  return max > min ? (value - min) / (max - min) : 0
+  return max > min ? (value - min) / (max - min) : 0.5
 }

@@ -79,7 +79,7 @@ async def get_heatmap(
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: datetime | None = None,
     resolution: int = Query(60, ge=10, le=200),
-    bounds: Literal["auto", "metric"] = "metric",
+    bounds: Literal["auto", "metric"] = "auto",
 ) -> dict[str, Any]:
     metric_row = await db.get(Metric, metric)
     if metric_row is None or metric_row.project_id != access.project.id:

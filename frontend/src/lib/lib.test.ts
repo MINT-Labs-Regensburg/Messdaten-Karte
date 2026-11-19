@@ -36,7 +36,7 @@ describe('Farbskalen', () => {
 
   it('normalisiert Werte auf den Bereich der Messgröße', () => {
     expect(normalize(10, -30, 50)).toBe(0.5)
-    expect(normalize(5, 5, 5)).toBe(0)
+    expect(normalize(5, 5, 5)).toBe(0.5) // alle Werte gleich: Mitte der Skala statt Randfarbe
   })
 })
 

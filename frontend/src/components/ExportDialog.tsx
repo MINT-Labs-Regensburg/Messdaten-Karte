@@ -17,6 +17,7 @@ interface ExportDialogProps {
   onClose: () => void
 }
 
+type Basemap = 'none' | 'osm' | 'satellite'
 const FORMATS: ExportFormat[] = ['csv', 'geojson', 'svg', 'png', 'jpeg']
 const isImage = (f: ExportFormat) => f === 'svg' || f === 'png' || f === 'jpeg'
 
@@ -31,6 +32,7 @@ export function ExportDialog({ project, canModerate, defaultFrom, defaultTo, def
   const [includeNotes, setIncludeNotes] = useState(false)
   const [imageMetric, setImageMetric] = useState(defaultMetricId ?? project.metrics[0]?.id ?? '')
   const [size, setSize] = useState('1600')
+  const [basemap, setBasemap] = useState<Basemap>('osm')
   const [showPoints, setShowPoints] = useState(true)
   const [showLegend, setShowLegend] = useState(true)
 
@@ -52,7 +54,7 @@ export function ExportDialog({ project, canModerate, defaultFrom, defaultTo, def
           metric_id: imageMetric,
           width_px: px,
           height_px: px,
-          basemap: 'none',
+          basemap: format === 'svg' ? 'none' : basemap, // SVG enthält nur Vektorformen
           show_points: showPoints,
           show_legend: showLegend,
         }
@@ -122,6 +124,16 @@ export function ExportDialog({ project, canModerate, defaultFrom, defaultTo, def
                 <small className="help">{t('export.size_help')}</small>
               </label>
             )}
+            {format !== 'svg' && (
+              <label className="field">
+                <span>{t('export.basemap')}</span>
+                <select className="input" value={basemap} onChange={(e) => setBasemap(e.target.value as Basemap)}>
+                  <option value="osm">{t('export.basemap_osm')}</option>
+                  <option value="satellite">{t('export.basemap_satellite')}</option>
+                  <option value="none">{t('export.basemap_none')}</option>
+                </select>
+              </label>
+            )}
             <label className="check">
               <input type="checkbox" checked={showPoints} onChange={(e) => setShowPoints(e.target.checked)} />
               <span>{t('export.show_points')}</span>
@@ -130,7 +142,9 @@ export function ExportDialog({ project, canModerate, defaultFrom, defaultTo, def
               <input type="checkbox" checked={showLegend} onChange={(e) => setShowLegend(e.target.checked)} />
               <span>{t('export.show_legend')}</span>
             </label>
-            <p className="help">{format === 'svg' ? t('export.svg_help') : t('export.basemap_help')}</p>
+            <p className="help">
+              {format === 'svg' ? t('export.svg_help') : basemap === 'none' ? t('export.nomap_help') : t('export.basemap_help')}
+            </p>
           </>
         ) : (
           <fieldset className="fieldset">

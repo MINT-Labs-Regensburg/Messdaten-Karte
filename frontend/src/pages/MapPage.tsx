@@ -34,6 +34,7 @@ import { MapView, type DraftPoint, type UserLocation } from '../map/MapView'
 import { MeasurementCard } from '../map/MeasurementCard'
 import { MetricPicker } from '../map/MetricPicker'
 import { TimeControls } from '../map/TimeControls'
+import { valueRanges } from '../map/dataRange'
 import { applyMeasurementEvent, inRange, scheduleHeatmapRefresh } from '../map/liveCache'
 import { useHeatmap, useMeasurements, useProject } from '../map/queries'
 import { useProjectLive } from '../map/useProjectLive'
@@ -75,6 +76,10 @@ export default function MapPage() {
   const measurementsQuery = useMeasurements(project?.id, iso(resolved.from), iso(resolved.to), includeHidden)
   const measurements = useMemo(() => measurementsQuery.data ?? [], [measurementsQuery.data])
   const liveStatus = useProjectLive(project?.id)
+
+  // Farbskala dynamisch aus den Messwerten im gewählten Zeitbereich (stabil während des Replays)
+  const ranges = useMemo(() => valueRanges(measurements, project?.metrics ?? []), [measurements, project?.metrics])
+  const range = metric ? (ranges[metric.id] ?? null) : null
 
   // ---- Replay
   const times = useMemo(() => measurements.map((m) => Date.parse(m.measured_at)), [measurements])
@@ -346,7 +351,13 @@ export default function MapPage() {
             </div>
           </div>
 
-          <MetricPicker variant="cards" metrics={project.metrics} selectedId={metric?.id} onSelect={setMetric} />
+          <MetricPicker
+            variant="cards"
+            metrics={project.metrics}
+            ranges={ranges}
+            selectedId={metric?.id}
+            onSelect={setMetric}
+          />
           {timeControls}
           {isMember && (
             <label className="check">
@@ -372,6 +383,7 @@ export default function MapPage() {
         <MapView
           project={project}
           metric={metric}
+          range={range}
           measurements={shown}
           heatmap={heatmapQuery.data}
           basemap={basemap}
@@ -404,7 +416,7 @@ export default function MapPage() {
             </div>
             {metric && (
               <div className="map-bottom-left">
-                <Legend metric={metric} heatmap={heatmapQuery.data} pointCount={shown.length} />
+                <Legend metric={metric} range={range} heatmap={heatmapQuery.data} pointCount={shown.length} />
               </div>
             )}
           </>
@@ -426,10 +438,16 @@ export default function MapPage() {
               </button>
             </div>
             <div className="mobile-chips">
-              <MetricPicker variant="chips" metrics={project.metrics} selectedId={metric?.id} onSelect={setMetric} />
+              <MetricPicker
+                variant="chips"
+                metrics={project.metrics}
+                ranges={ranges}
+                selectedId={metric?.id}
+                onSelect={setMetric}
+              />
             </div>
             <div className="mobile-bottom">
-              {metric && <Legend metric={metric} heatmap={heatmapQuery.data} pointCount={shown.length} />}
+              {metric && <Legend metric={metric} range={range} heatmap={heatmapQuery.data} pointCount={shown.length} />}
               <div className="card float-shadow time-card">
                 <button type="button" className="time-toggle" aria-expanded={timeOpen} onClick={() => setTimeOpen((o) => !o)}>
                   <span className="help">{t('time.title')}</span>

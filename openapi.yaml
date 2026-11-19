@@ -504,8 +504,11 @@ paths:
           schema: { type: integer, minimum: 10, maximum: 200, default: 60 }
         - name: bounds
           in: query
-          description: Wertebereich der Farbskala fixieren (`auto` = aus Daten, `metric` = Min/Max der Messgröße)
-          schema: { type: string, enum: [auto, metric], default: metric }
+          description: |
+            Wertebereich der Farbskala (`value_range`) und Beschnitt der Interpolation.
+            `auto` (Standard) = kleinster/größter Messwert im Zeitbereich, also eine dynamische Skala;
+            `metric` = feste Grenzen der Messgröße (Min/Max).
+          schema: { type: string, enum: [auto, metric], default: auto }
       responses:
         '200':
           description: Heatmap
@@ -550,6 +553,11 @@ paths:
               schema: { $ref: '#/components/schemas/ExportJob' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+        '502':
+          description: Die Hintergrundkarte konnte nicht geladen werden (`basemap_unavailable`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /projects/{project}/exports/{job_id}:
     parameters:
@@ -1187,7 +1195,10 @@ components:
               type: string
               enum: [none, osm, satellite]
               default: none
-              description: 'Bei svg nur `none` (keine Pixelgrafik)'
+              description: |
+                Hintergrundkarte; der Server lädt die Kacheln und fügt die Quellenangabe ins Bild ein
+                (`osm`: OpenStreetMap, `satellite`: Esri World Imagery). Bei png/jpeg wählbar, bei svg
+                nur `none` (keine Pixelgrafik, sonst 422 `basemap_not_supported`).
             show_points: { type: boolean, default: true }
             show_legend: { type: boolean, default: true }
         video:

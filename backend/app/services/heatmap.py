@@ -53,20 +53,48 @@ def _idw(xy: np.ndarray, z: np.ndarray, gx: np.ndarray, gy: np.ndarray) -> np.nd
     return out
 
 
-def _kriging(
-    xy: np.ndarray, z: np.ndarray, gx: np.ndarray, gy: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    from pykrige.ok import OrdinaryKriging
+# Ab so vielen Punkten wird das Variogramm aus den Daten angepasst (sonst aus der Punktverteilung)
+AUTO_FIT_MIN_POINTS = 15
+# Eine angepasste Reichweite unter diesem Anteil der gewünschten Reichweite wäre zu kurz
+MIN_RANGE_FRACTION = 0.35
 
-    ok = OrdinaryKriging(
-        xy[:, 0],
-        xy[:, 1],
-        z,
-        variogram_model="spherical",
-        verbose=False,
-        enable_plotting=False,
-        coordinates_type="euclidean",
-    )
+
+def _kriging(
+    xy: np.ndarray, z: np.ndarray, gx: np.ndarray, gy: np.ndarray, radius_m: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Ordinary Kriging, dessen Punkte sich über das ganze Gebiet gegenseitig beeinflussen.
+
+    Ein frei angepasstes Variogramm hat bei wenigen Punkten oft eine Reichweite kleiner als der
+    Punktabstand; dann sagt das Kriging abseits der Punkte überall den Mittelwert voraus (eine
+    „Standardfläche“ mit Flecken um die Messpunkte). Deshalb reicht der Einfluss der Punkte
+    mindestens über das ganze Gebiet (Reichweite ≥ Kreisdurchmesser; Sill = Streuung der Werte,
+    nahezu kein Nugget). Die Datenanpassung wird nur genutzt, wenn genug Punkte da sind und sie
+    eine ebenso weite Reichweite liefert.
+    """
+    from pykrige.ok import OrdinaryKriging
+    from scipy.spatial.distance import pdist
+
+    def build(params: dict[str, float] | None) -> OrdinaryKriging:
+        return OrdinaryKriging(
+            xy[:, 0],
+            xy[:, 1],
+            z,
+            variogram_model="spherical",
+            variogram_parameters=params,
+            verbose=False,
+            enable_plotting=False,
+            coordinates_type="euclidean",
+        )
+
+    reach = max(float(pdist(xy).max()), 2 * radius_m)
+    sill = float(np.var(z))
+    ok = None
+    if len(z) >= AUTO_FIT_MIN_POINTS:
+        fitted = build(None)
+        if fitted.variogram_model_parameters[1] >= MIN_RANGE_FRACTION * reach:
+            ok = fitted
+    if ok is None:
+        ok = build({"sill": sill, "range": reach, "nugget": 0.001 * sill})
     vals = np.empty(len(gx))
     var = np.empty(len(gx))
     for start in range(0, len(gx), CHUNK):
@@ -79,6 +107,7 @@ def _kriging(
 def compute_grid(points: list[tuple[float, float, float]], spec: GridSpec) -> dict[str, Any]:
     """`points` = (lat, lon, value). Blockierend (CPU) – mit `asyncio.to_thread` aufrufen."""
     base: dict[str, Any] = {"point_count": 0}
+    data_min = data_max = 0.0
     if points:
         arr = np.array(
             [
@@ -86,6 +115,7 @@ def compute_grid(points: list[tuple[float, float, float]], spec: GridSpec) -> di
                 for lat, lon, v in points
             ]
         )
+        data_min, data_max = float(arr[:, 2].min()), float(arr[:, 2].max())
         # Gleiche Orte (auf 1 m gerundet) mitteln
         xy, z = _aggregate(arr[:, :2], arr[:, 2], 1.0)
         if len(z) > spec.max_points:
@@ -113,15 +143,20 @@ def compute_grid(points: list[tuple[float, float, float]], spec: GridSpec) -> di
         method = "idw_fallback"
     else:
         try:
-            values, variance = _kriging(xy, z, gx, gy)
+            values, variance = _kriging(xy, z, gx, gy, spec.radius_m)
             if not (np.isfinite(values).all() and np.isfinite(variance).all()):
                 raise ValueError("non-finite kriging result")
             method = "kriging"
         except Exception:  # Singuläre Matrix, Variogramm-Fit schlägt fehl, ...
             values, variance, method = _idw(xy, z, gx, gy), None, "idw_fallback"
 
+    # Farbskala: feste Grenzen der Messgröße oder dynamisch aus den vorhandenen Daten.
+    # Die Interpolation wird auf diesen Bereich beschnitten (Legende und Farben passen so zusammen).
     if spec.vmin is not None and spec.vmax is not None:
-        values = np.clip(values, spec.vmin, spec.vmax)
+        low, high = spec.vmin, spec.vmax
+    else:
+        low, high = data_min, data_max
+    values = np.clip(values, low, high)
 
     def to_grid(flat: np.ndarray) -> list[list[float | None]]:
         full = np.full((n, n), np.nan)
@@ -139,9 +174,7 @@ def compute_grid(points: list[tuple[float, float, float]], spec: GridSpec) -> di
         "method": method,
         "bounds": circle_bounds(spec.center_lat, spec.center_lon, spec.radius_m),
         "grid": grid,
-        "value_range": {"min": spec.vmin, "max": spec.vmax}
-        if spec.vmin is not None and spec.vmax is not None
-        else {"min": float(values.min()), "max": float(values.max())},
+        "value_range": {"min": low, "max": high},
     }
 
 
