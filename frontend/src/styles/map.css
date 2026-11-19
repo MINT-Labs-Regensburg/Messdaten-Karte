@@ -1,0 +1,432 @@
+/* Kartenseite: Desktop = Seitenleiste + Karte, Handy = Vollbildkarte mit schwebenden Elementen */
+.map-page {
+  position: relative;
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--land);
+}
+.map-sidebar {
+  width: 380px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+.project-title {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0;
+}
+.sidebar-foot {
+  margin-top: auto;
+}
+.map-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+/* höhere Spezifität, damit Leaflets eigenes graues .leaflet-container nicht gewinnt */
+.map-page .map-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--land);
+  font-family: var(--font-ui);
+}
+.map-dark .leaflet-tile-pane {
+  filter: brightness(0.62) contrast(1.05) saturate(0.7) hue-rotate(10deg);
+}
+.heat-overlay {
+  image-rendering: auto;
+}
+.point {
+  cursor: pointer;
+}
+
+.card.float-shadow,
+.float-shadow {
+  box-shadow: var(--shadow);
+}
+.map-top-right {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.map-bottom-left {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  z-index: 1100;
+  width: 360px;
+}
+.basemap-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 15px;
+}
+.basemap-switch .seg.on {
+  background: var(--pri-soft);
+  color: var(--pri-soft-ink);
+  box-shadow: none;
+}
+.map-attrib {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  z-index: 1100;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--ink2);
+  font-size: 11px;
+}
+.map-attrib a {
+  color: inherit;
+}
+
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 12px;
+  box-shadow: var(--shadow);
+}
+.legend-bar {
+  height: 12px;
+  border-radius: 6px;
+}
+.legend-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink3);
+}
+.legend-note {
+  margin: 0;
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--pri-soft);
+  color: var(--pri-soft-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--acc);
+}
+.live-offline .live-dot,
+.live-connecting .live-dot {
+  background: var(--ink3);
+}
+
+.map-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1150;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 24px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-weight: 600;
+  font-size: 14px;
+}
+.map-banner-pick {
+  background: var(--pri);
+  color: var(--pri-ink);
+  top: 84px;
+}
+.map-banner-quiet {
+  top: auto;
+  bottom: 28px;
+  font-weight: 500;
+  color: var(--ink2);
+}
+@media (min-width: 900px) {
+  .map-banner {
+    top: 20px;
+  }
+  .map-banner-pick {
+    top: 84px;
+  }
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.metric-card.on {
+  border: 2px solid var(--pri);
+  background: var(--pri-soft);
+  padding: 11px 13px;
+}
+
+.time-controls .replay-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.replay-pos {
+  min-width: 70px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Detailkarte einer Messung */
+.measurement-card {
+  position: absolute;
+  top: 100px;
+  right: 20px;
+  z-index: 1100;
+  width: 270px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.value-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.value-row dt {
+  color: var(--ink2);
+  font-size: 13px;
+}
+.value-row dd {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.value-row .unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink3);
+}
+.card-note {
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Handy: schwebende Leiste, Chips, unterer Stapel */
+.mobile-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  min-height: 68px;
+}
+.mobile-title {
+  min-width: 0;
+}
+.mobile-title .project-title {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mobile-chips {
+  position: absolute;
+  top: 92px;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  padding: 0 12px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chips {
+  display: flex;
+  gap: 8px;
+}
+.chip-float {
+  box-shadow: var(--shadow);
+}
+.mobile-bottom {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.time-card {
+  padding: 6px 12px 12px;
+  background: var(--surface);
+}
+.time-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.mobile-bottom .btn-lg {
+  width: 100%;
+  min-height: 56px;
+}
+.map-attrib-inline {
+  align-self: center;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--ink2);
+  font-size: 11px;
+}
+.map-attrib-inline a {
+  color: inherit;
+}
+@media (max-width: 899px) {
+  .measurement-card {
+    top: 150px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  .map-canvas .leaflet-bottom.leaflet-right {
+    display: none;
+  }
+}
+
+/* Formular zum Eintragen */
+.location-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: var(--pri-soft);
+  color: var(--pri-soft-ink);
+}
+.location-card.location-bad {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
+  color: var(--ink);
+}
+.location-dot {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--pri);
+  color: var(--pri-ink);
+  font-weight: 700;
+}
+.location-bad .location-dot {
+  background: var(--danger);
+  color: #fff;
+}
+.stepper {
+  display: flex;
+  align-items: stretch;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--surface);
+}
+.stepper button {
+  width: 56px;
+  flex: none;
+  border: 0;
+  background: var(--surface2);
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.stepper input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: right;
+  font: 700 24px var(--font-display);
+  padding: 0 6px 0 0;
+}
+.stepper .unit {
+  display: flex;
+  align-items: center;
+  min-width: 48px;
+  padding-left: 2px;
+  color: var(--ink3);
+  font-weight: 500;
+}
+.scale-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.scale-btn {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 16px var(--font-ui);
+  cursor: pointer;
+}
+.scale-btn.on {
+  background: var(--pri);
+  border-color: var(--pri);
+  color: var(--pri-ink);
+  font-weight: 700;
+}

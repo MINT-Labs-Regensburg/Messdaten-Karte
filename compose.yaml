@@ -1,8 +1,8 @@
 # Messdaten Karte – Produktions-Stack: PostgreSQL, Backend (FastAPI) und Frontend (nginx).
 #
 #   cp .env.example .env     # Werte eintragen
-#   docker compose up -d     # Datenbank + Backend
-#   docker compose --profile frontend up -d --build   # zusätzlich das Frontend (sobald frontend/ ein Vite-Projekt enthält)
+#   docker compose up -d     # nur Datenbank + Backend (API auf 127.0.0.1:8000)
+#   docker compose --profile frontend up -d --build   # komplett inkl. Frontend (nginx auf 127.0.0.1:8080)
 #
 # Das Backend läuft bewusst mit genau einem Prozess (siehe backend/docker-entrypoint.sh).
 

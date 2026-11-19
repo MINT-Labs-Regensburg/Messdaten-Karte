@@ -183,8 +183,21 @@ Festlegungen aus der Implementierung (Code in `backend/app/`, Start: `uvicorn ap
 - **Rate-Limits** (Login, Registrierung, anonyme Messungen) liegen im Arbeitsspeicher: Das Backend läuft deshalb mit **einem** Worker-Prozess (gilt auch für Hub und Heatmap-Cache). Hinter einem Reverse Proxy `--proxy-headers` und `--forwarded-allow-ips` setzen, damit die Client-IP stimmt.
 - **Export**: CSV (mit Schutz vor Formel-Injection) und GeoJSON; SVG (reine Vektorgrafik) sowie PNG/JPEG mit wählbarer Auflösung, jeweils ohne Basiskarte (`basemap` ≠ `none` → 422 `basemap_not_supported`, solange die Kachelnutzung nicht geklärt ist). Video noch nicht umgesetzt.
 - **Erster Admin**: `ADMIN_USERNAME`/`ADMIN_PASSWORD` beim Start (legt nur an, falls nicht vorhanden) oder `python -m app.cli create-admin <name>`.
-- **Deployment** (`compose.yaml`, Variablen in `.env.example`): `db` (Postgres 15, Volume `pgdata`), `backend` (Image aus `backend/Dockerfile`, führt beim Start `alembic upgrade head` aus, läuft als Nicht-Root mit read-only Dateisystem) und `frontend` (nginx aus `frontend/Dockerfile`, liefert die Vite-App und proxyt `/api` inkl. WebSocket). Das Frontend-Profil (`--profile frontend`) ist erst nutzbar, wenn `frontend/` ein Vite-Projekt enthält; bis dahin startet `docker compose up -d` nur Datenbank und Backend (lokal auf `127.0.0.1:8000`). Der Reverse Proxy (`hz-haproxy`) terminiert HTTPS und leitet auf den Frontend-Port (Standard `127.0.0.1:8080`) weiter; WebSocket-Upgrade muss durchgereicht werden.
+- **Deployment** (`compose.yaml`, Variablen in `.env.example`): `db` (Postgres 15, Volume `pgdata`), `backend` (Image aus `backend/Dockerfile`, führt beim Start `alembic upgrade head` aus, läuft als Nicht-Root mit read-only Dateisystem) und `frontend` (nginx aus `frontend/Dockerfile`, liefert die Vite-App und proxyt `/api` inkl. WebSocket). Das Frontend läuft im Compose-Profil `frontend` (`docker compose --profile frontend up -d --build`); ohne Profil starten nur Datenbank und Backend (API lokal auf `127.0.0.1:8000`). Der Reverse Proxy (`hz-haproxy`) terminiert HTTPS und leitet auf den Frontend-Port (Standard `127.0.0.1:8080`) weiter; WebSocket-Upgrade muss durchgereicht werden.
 - **Tests**: laufen gegen eine Wegwerf-Postgres-Datenbank (`backend/compose.test.yaml`, Port 55432); das Schema entsteht per Alembic-Migration.
+
+## Frontend-Umsetzung (Stand 2026-11-19)
+
+Code in `frontend/` (React 18, Vite, TypeScript), Entwicklung und Tests siehe `frontend/README.md`. Gestaltung laut Design-Konzept (Salbei/Blatt hell, Nachtwald dunkel, Heatmap-Skalen „Erde–Himmel“ und „Wald“).
+
+- **Seiten**: `/` Startseite mit Login und öffentlichen Karten, `/register`, `/p/:slug` Karte, `/projects` (Liste), `/projects/new`, `/projects/:id/settings`, `/tokens`, `/profile`, `/admin`.
+- **Karte** (Leaflet): Straße (OSM) und Satellit (Esri, mit Hinweis auf höheren Datenverbrauch) mit Attribution; Heatmap als Bild-Overlay aus dem Kriging-Gitter; Messpunkte nach Messgröße eingefärbt; Klick in den Kreis oder „Mein Standort“ öffnet das Eintragen-Formular (Handy: Sheet unten, Desktop: Seitenpanel).
+- **Zeitbereich** (Schnellwahl oder eigene Grenzen) und gewählte Messgröße stehen in der URL (`?r=week`, `?from=…&to=…`, `?m=<id>`) und sind teilbar. **Replay** mit Play/Pause und Schieberegler, Modus „gleitendes Fenster“ oder „kumulativ“, ein Schritt pro Sekunde (Heatmap wird entprellt neu angefordert).
+- **Live**: WebSocket pro Projekt mit automatischem Wiederverbinden (Backoff) und Nachladen nach Verbindungsabbruch; neue Messungen erscheinen nur, wenn sie in den gewählten Zeitbereich fallen. Die Heatmap wird bei Ereignissen vom Client neu angefordert.
+- **Anonyme Änderung**: Der Edit-Token wird im Browser (localStorage) gespeichert und nur innerhalb des Änderungsfensters verwendet; angemeldete Autoren und Mitglieder dürfen jederzeit ändern.
+- **Texte**: ausschließlich in `src/i18n/de.json` und `en.json` (Test prüft Vollständigkeit und Gleichheit beider Sprachen); API-Fehler kommen als Codes und werden übersetzt. Sprache nach Browser, umschaltbar.
+- **Datenschutz/Verbrauch**: Schriften werden selbst ausgeliefert (keine Google-Fonts-Anfrage); Seiten mit Karte, Einstellungen und Admin werden erst bei Bedarf geladen; Dunkelmodus folgt dem System und ist umschaltbar.
+- **Export**: Dialog für CSV, GeoJSON, SVG, PNG und JPEG; es wird gewählt, welche Daten enthalten sein sollen (Messgrößen, Zeitbereich, Ausgeblendete, Namen/Notizen). Bilder ohne Basiskarte.
 
 ## Offene Fragen
 
