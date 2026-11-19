@@ -1,0 +1,74 @@
+# Messdaten Karte – Produktions-Stack: PostgreSQL, Backend (FastAPI) und Frontend (nginx).
+#
+#   cp .env.example .env     # Werte eintragen
+#   docker compose up -d     # Datenbank + Backend
+#   docker compose --profile frontend up -d --build   # zusätzlich das Frontend (sobald frontend/ ein Vite-Projekt enthält)
+#
+# Das Backend läuft bewusst mit genau einem Prozess (siehe backend/docker-entrypoint.sh).
+
+name: messdaten-karte
+
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-messdaten}
+      POSTGRES_USER: ${POSTGRES_USER:-messdaten}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-messdaten}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-messdaten}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY in .env setzen (mind. 32 Zeichen)}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MAX_RADIUS_M: ${MAX_RADIUS_M:-5000}
+      MAX_MEASUREMENTS_PER_PROJECT: ${MAX_MEASUREMENTS_PER_PROJECT:-5000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-[]}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
+    # Zum Debuggen bzw. ohne Frontend direkt erreichbar, aber nur lokal
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  frontend:
+    profiles: ["frontend"]
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:

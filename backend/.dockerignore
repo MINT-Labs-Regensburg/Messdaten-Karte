@@ -1,0 +1,11 @@
+.venv
+.env
+.ruff_cache
+.pytest_cache
+__pycache__
+*.pyc
+.coverage
+tests
+compose.test.yaml
+Dockerfile
+README.md
