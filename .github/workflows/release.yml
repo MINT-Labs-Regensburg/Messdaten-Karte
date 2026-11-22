@@ -45,8 +45,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          # v1.2.3 -> 1.2.3, 1.2, 1 und latest (Vorabversionen nur mit ihrem eigenen Tag)
+          # v1.2.3 -> 1.2.3, 1.2, 1 und latest. `latest` ist immer das neueste Release;
+          # Vorabversionen (v1.2.0-rc.1) bekommen nur ihren eigenen Tag.
+          flavor: |
+            latest=false
           tags: |
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}

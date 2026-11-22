@@ -122,6 +122,8 @@ ghcr.io/mint-labs-regensburg/messdaten-karte-backend:<version>
 ghcr.io/mint-labs-regensburg/messdaten-karte-frontend:<version>
 ```
 
+Für `<version>` gibt es `1.2.3`, `1.2` und `1` sowie `latest`. `latest` ist immer das neueste Release und wird mit jedem Release neu gesetzt. Vorabversionen (`1.2.0-rc.1`) bekommen nur ihren eigenen Tag. Für den Produktivbetrieb empfiehlt sich eine feste Version statt `latest`.
+
 In `compose.yaml` statt `build:` das passende `image:` eintragen und mit `docker compose pull && docker compose up -d` starten.
 
 ### Wichtige Einstellungen
