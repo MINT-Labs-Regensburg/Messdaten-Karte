@@ -1,28 +1,17 @@
-name: Publish
+name: Release
 
-# Veröffentlicht die Docker-Images nach GHCR, jeweils erst nach grünen Tests:
-#   - Push auf main (also jeder gemergte PR): Tags `latest` und `sha-<kurzer Commit>`.
-#     `latest` zeigt damit immer auf den neuesten Stand von main.
-#   - Versions-Tag (z. B. v1.2.0, Vorabversion v1.2.0-rc.1): Tags 1.2.0, 1.2 und 1
-#     (Vorabversionen nur mit ihrem eigenen Tag) und zusätzlich ein GitHub Release.
-#       git tag v1.2.0 && git push origin v1.2.0
-#     oder „Draft a new release“ auf GitHub (das legt den Tag an).
-# Ein Versions-Tag verschiebt `latest` nie: Das tut ausschließlich main.
+# Ein Release entsteht durch einen Versions-Tag (z. B. v1.2.0, Vorabversion: v1.2.0-rc.1):
+#   git tag v1.2.0 && git push origin v1.2.0
+# oder durch „Draft a new release“ auf GitHub (das legt den Tag an).
+# Ablauf: alle Tests -> Docker-Images bauen und nach GHCR veröffentlichen -> GitHub Release.
 on:
   push:
-    branches: [main]
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
 
 permissions:
   contents: read
-
-# Bei zwei schnell aufeinanderfolgenden Merges gewinnt der neuere Lauf, damit ein älterer
-# Lauf `latest` nicht nachträglich überschreibt. Tag-Läufe werden nie abgebrochen.
-concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
 jobs:
   test:
@@ -56,12 +45,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
-          # `latest` nur ausdrücklich und nur von main, nie automatisch von einem Tag
+          # v1.2.3 -> 1.2.3, 1.2, 1 und latest. `latest` ist immer das neueste Release;
+          # Vorabversionen (v1.2.0-rc.1) bekommen nur ihren eigenen Tag.
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
-            type=sha,prefix=sha-,format=short,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
@@ -77,8 +66,6 @@ jobs:
 
   release:
     name: GitHub Release
-    # Nur bei Versions-Tags; ein Push auf main veröffentlicht nur die Images
-    if: github.ref_type == 'tag'
     needs: images
     runs-on: ubuntu-24.04
     permissions:
