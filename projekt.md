@@ -204,8 +204,11 @@ Code in `frontend/` (React 18, Vite, TypeScript), Entwicklung und Tests siehe `f
 GitHub Actions in `.github/workflows/`:
 
 - **`ci.yml`** läuft bei **jedem Push auf einen Branch und jedem Pull Request**: Backend (`ruff format --check`, `ruff check`, `pytest` gegen eine Postgres-15-Testdatenbank als Service-Container), Frontend (`npm run typecheck`, `npm test`, `npm run build`) und ein Probebau beider Docker-Images (ohne Veröffentlichung) samt Prüfung von `compose.yaml`. Ein neuer Push bricht den laufenden Lauf desselben Branches ab.
-- **`release.yml`** startet bei einem Versions-Tag (`v1.2.0`, Vorabversion `v1.2.0-rc.1`): zuerst dieselben Tests (über `workflow_call`), dann werden beide **Docker-Images für `linux/amd64` und `linux/arm64`** gebaut und nach GHCR veröffentlicht, danach legt der Workflow das **GitHub Release** mit automatisch erzeugten Notizen an (Vorabversionen als „Pre-release“; existiert das Release schon, weil es über die Oberfläche angelegt wurde, bleibt es unverändert).
-- **Images**: `ghcr.io/<besitzer>/messdaten-karte-backend` und `…-frontend`, Tags `1.2.3`, `1.2`, `1` und `latest` (Vorabversionen nur mit ihrem eigenen Tag).
+- **`publish.yml`** (früher `release.yml`) startet bei jedem Push auf `main` und bei einem Versions-Tag (`v1.2.0`, Vorabversion `v1.2.0-rc.1`): zuerst dieselben Tests (über `workflow_call`), dann werden beide **Docker-Images für `linux/amd64` und `linux/arm64`** gebaut und nach GHCR veröffentlicht. Nur bei einem Versions-Tag legt der Workflow danach das **GitHub Release** mit automatisch erzeugten Notizen an (Vorabversionen als „Pre-release“; existiert das Release schon, weil es über die Oberfläche angelegt wurde, bleibt es unverändert).
+- **Images**: `ghcr.io/<besitzer>/messdaten-karte-backend` und `…-frontend`.
+  - Push auf `main`: `latest` (immer der neueste Stand von `main`) und `sha-<kurzer Commit>`.
+  - Versions-Tag: `1.2.3`, `1.2` und `1` (Vorabversionen nur mit ihrem eigenen Tag). Ein Versions-Tag setzt `latest` bewusst nicht; das bestimmt allein `main`.
+  - Zwei schnell aufeinanderfolgende Merges: Der ältere Lauf wird abgebrochen (`concurrency`), damit er `latest` nicht nachträglich überschreibt.
 - **Release erstellen**: `git tag v1.2.0 && git push origin v1.2.0` oder auf GitHub „Draft a new release“ mit neuem Tag. Nach dem ersten Lauf die Pakete einmalig unter „Packages“ auf öffentlich stellen, falls der Server ohne Anmeldung ziehen soll.
 - **Betrieb mit den Images**: in `compose.yaml` statt `build:` das passende `image: ghcr.io/<besitzer>/messdaten-karte-backend:1.2.0` bzw. `…-frontend:1.2.0` eintragen (oder per Override-Datei) und `docker compose pull && docker compose up -d`.
 

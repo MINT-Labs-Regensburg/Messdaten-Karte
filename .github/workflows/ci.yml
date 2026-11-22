@@ -1,7 +1,8 @@
 name: CI
 
 # Alle Tests bei jedem Push auf einen Branch und bei jedem Pull Request.
-# Tag-Pushes (Releases) startet release.yml, das dieselben Prüfungen über workflow_call nutzt.
+# Veröffentlichen (Push auf main, Versions-Tags) übernimmt publish.yml; es ruft dieselben
+# Prüfungen über workflow_call auf und baut Images nur, wenn sie grün sind.
 on:
   push:
     branches: ["**"]

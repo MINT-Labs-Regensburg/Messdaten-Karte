@@ -115,12 +115,16 @@ docker compose exec -it backend python -m app.cli create-admin <benutzername>
 
 ### Fertige Images
 
-Jedes Release veröffentlicht die Images (`linux/amd64` und `linux/arm64`) in der GitHub Container Registry:
+Die Images (`linux/amd64` und `linux/arm64`) liegen in der GitHub Container Registry:
 
 ```
-ghcr.io/mint-labs-regensburg/messdaten-karte-backend:<version>
-ghcr.io/mint-labs-regensburg/messdaten-karte-frontend:<version>
+ghcr.io/mint-labs-regensburg/messdaten-karte-backend:latest
+ghcr.io/mint-labs-regensburg/messdaten-karte-frontend:latest
 ```
+
+- `latest` ist immer der neueste Stand von `main`: Jeder gemergte Pull Request veröffentlicht nach grünen Tests neue Images.
+- `sha-<Commit>` (z. B. `sha-3ebd2c8`) pinnt genau einen Stand von `main`.
+- `1.2.3`, `1.2` und `1` gibt es für Releases; Vorabversionen (`1.2.0-rc.1`) nur mit ihrem eigenen Tag. Für den Produktivbetrieb empfiehlt sich eine feste Version statt `latest`.
 
 In `compose.yaml` statt `build:` das passende `image:` eintragen und mit `docker compose pull && docker compose up -d` starten.
 
@@ -183,7 +187,7 @@ Mehr dazu in [`backend/README.md`](backend/README.md) und [`frontend/README.md`]
 ## Continuous Integration und Releases
 
 - **CI** (`.github/workflows/ci.yml`) läuft bei jedem Push auf einen Branch und bei jedem Pull Request: Backend (ruff, pytest gegen Postgres), Frontend (Typecheck, Tests, Build) und ein Probebau beider Docker-Images.
-- **Release** (`.github/workflows/release.yml`) startet bei einem Versions-Tag (`v1.2.0`, Vorabversion `v1.2.0-rc.1`): zuerst alle Tests, dann werden die Docker-Images gebaut und veröffentlicht, danach entsteht das GitHub Release mit automatisch erzeugten Notizen.
+- **Publish** (`.github/workflows/publish.yml`) läuft bei jedem Push auf `main` und bei einem Versions-Tag (`v1.2.0`, Vorabversion `v1.2.0-rc.1`). Zuerst laufen alle Tests, dann werden die Docker-Images gebaut und veröffentlicht. Ein Push auf `main` setzt `latest` und `sha-<Commit>`; ein Versions-Tag setzt die Versions-Tags und legt danach das GitHub Release mit automatisch erzeugten Notizen an. Ein Versions-Tag verändert `latest` nie.
 
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
